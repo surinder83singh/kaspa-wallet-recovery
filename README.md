@@ -1,1 +1,1 @@
-## Wallet tools
+## Kaspa Wallet tools
