@@ -1,0 +1,13 @@
+[package]
+name = "kaspa-wallet-tools"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# kaspa-wallet-core = "*"
+kaspa-wallet-keys = "*"
+kaspa-bip32 = "*"
+kaspa-utils = "*"
+kaspa-addresses = "*"
+workflow-core = "*"
+hmac="*"
