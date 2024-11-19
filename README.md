@@ -37,14 +37,14 @@ Edit the `config.rs` file to provide your details and choose your recovery optio
 
 #### Add Your Wallet Mnemonic and Target Address
 ```rust
-const MNEMONIC: &str = "your mnemonic phrase goes here";
-const TARGET_ADDRESS: &str = "your target address here";
+pub const MNEMONIC: &str = "your mnemonic phrase goes here";
+pub const TARGET_ADDRESS: &str = "your target address here";
 ```
 
 #### Enable or Disable Two-Word Correction
 Set the `FIX_2_WORDS` flag to control the correction behavior:
 ```rust
-const FIX_2_WORDS: bool = true; // Set to 'true' to allow fixing up to 2 words; 'false' for fixing 1 word.
+pub const FIX_2_WORDS: bool = true; // Set to 'true' to allow fixing up to 2 words; 'false' for fixing 1 word only.
 ```
 
 ### 3. Compile the Program
@@ -76,13 +76,13 @@ Execute the compiled program with:
 
 ### When Fixing 1 Incorrect Word:
 ```
-Fixing 1 Incorrect Word
+The application will attempt to fix up to 2 words in the mnemonic.
 Match found : "mnemonic phrase goes here....."
 ```
 
 ### When Fixing 2 Incorrect Words:
 ```
-Fixing 2 Incorrect Words
+The application will only attempt to fix 1 word in the mnemonic.
 Match found : "mnemonic phrase goes here....."
 ```
 

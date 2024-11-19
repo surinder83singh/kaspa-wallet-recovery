@@ -1263,7 +1263,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wallet-tools"
+name = "kaspa-wallet-recovery"
 version = "0.1.0"
 dependencies = [
  "hmac",
@@ -1271,6 +1271,8 @@ dependencies = [
  "kaspa-bip32",
  "kaspa-utils",
  "kaspa-wallet-keys",
+ "serde",
+ "serde_json",
  "workflow-core",
 ]
 
