@@ -1,18 +1,32 @@
-name: Release for macOS
+name: Build and upload assets
 permissions:
   contents: write
   actions: write
 on:
-  workflow_dispatch:
-  push:
-    tags:
-      - 'v*' # Triggers workflow for tags like "v1.0.0"
-
+  release:
+    types: [ published ]
+  # push:
+  #   tags:
+  #     - 'v*' # Triggers workflow for tags like "v1.0.0"
+env:
+  repo_name: "kaspa-wallet-recovery"
+  binary: "kaspa-wallet-recovery-${{ github.ref_name }}"
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
+        # os: [ ubuntu-18.04, ubuntu-latest, windows-latest, macos-latest ]
+        os: [ macos-latest, windows-latest ]
 
+    name: Building, ${{ matrix.os }}
     steps:
+    - name: Fix CRLF on Windows
+      if: runner.os == 'Windows'
+      run: git config --global core.autocrlf false
+
     - name: Checkout Code
       uses: actions/checkout@v3
 
@@ -22,29 +36,64 @@ jobs:
         profile: minimal
         toolchain: stable
         override: true
+
     - name: Set up rust
+      if: runner.os == 'macOS'
       run: rustup target add x86_64-apple-darwin
 
     - name: Build for macOS (x86_64)
+      if: runner.os == 'macOS'
       run: cargo build --release --target x86_64-apple-darwin
 
     - name: Build for macOS (ARM64)
+      if: runner.os == 'macOS'
       run: cargo build --release --target aarch64-apple-darwin
 
-    - name: Package Binaries
+    - name: Package macOS Binaries
+      if: runner.os == 'macOS'
       run: |
-        mkdir release-darwin-x86_64
-        cp target/x86_64-apple-darwin/release/kaspa-wallet-recovery release-darwin-x86_64/kaspa-wallet-recovery-x86_64
-        tar -czvf kaspa-wallet-recovery-darwin-x86_64.tar.gz release-darwin-x86_64
-        mkdir release-darwin-arm64
-        cp target/aarch64-apple-darwin/release/kaspa-wallet-recovery release-darwin-arm64/kaspa-wallet-recovery-arm64
-        tar -czvf kaspa-wallet-recovery-darwin-arm64.tar.gz release-darwin-arm64
+        folder="${{env.binary}}-osx-x86_64"
+        mkdir "${folder}"
+        cp target/x86_64-apple-darwin/release/${{ env.repo_name }} ${folder}/${{env.repo_name}}-x86_64
+        tar -czvf ${{env.binary}}-osx-x86_64.tar.gz ${folder}
+        folder="${{env.binary}}-osx-arm64"
+        mkdir "${folder}"
+        cp target/aarch64-apple-darwin/release/${{ env.repo_name }} ${folder}/${{env.repo_name}}-arm64
+        tar -czvf ${{env.binary}}-osx-arm64.tar.gz ${folder}
         
 
     - name: Create GitHub Release
+      id: "create_release"
+      if: runner.os == 'macOS'
       uses: ncipollo/release-action@v1
       with:
+        allowUpdates: true
         token: ${{ secrets.GITHUB_TOKEN }}
         tag: ${{ github.ref_name }}
         name: Release ${{ github.ref_name }}
-        artifacts: kaspa-wallet-recovery-darwin-x86_64.tar.gz,kaspa-wallet-recovery-darwin-arm64.tar.gz 
+
+        artifacts: ${{env.binary}}-osx-x86_64.tar.gz,${{env.binary}}-osx-arm64.tar.gz 
+
+    - name: Build on Windows
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        cargo build --release
+        mkdir bin || true
+        cp target/release/${{ env.repo_name }}.exe bin/${{env.binary}}-win64.exe
+        archive="bin/${{env.binary}}-win64.zip"
+        asset_name="${{env.binary}}-win64.zip"
+        powershell "Compress-Archive bin/* \"${archive}\""
+        echo "archive=${archive}" >> $GITHUB_ENV
+        echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+    - name: Upload release asset
+      if: runner.os == 'Windows'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: "./${{ env.archive }}"
+        asset_name: "${{ env.asset_name }}"
+        asset_content_type: application/zip

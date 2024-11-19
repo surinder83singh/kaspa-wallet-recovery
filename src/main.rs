@@ -1,5 +1,5 @@
 use hmac::Mac;
-use kaspa_addresses::{Address, PayloadVec};//, Prefix as AddressPrefix, Version as AddressVersion};
+use kaspa_addresses::{Address, PayloadVec}; //, Prefix as AddressPrefix, Version as AddressVersion};
 use kaspa_bip32::{
     secp256k1, secp256k1::PublicKey as PublicKey2, AddressType, ChildNumber, ExtendedKeyAttrs,
     ExtendedPrivateKey, HmacSha512, Language, Mnemonic, PublicKey, SecretKey, SecretKeyExt,
@@ -7,12 +7,12 @@ use kaspa_bip32::{
 };
 use kaspa_utils::hex::{FromHex, ToHex};
 use kaspa_wallet_keys::{derivation::gen0::WalletDerivationManagerV0, error::Error};
-use std::{sync::Arc, thread, time::SystemTime};
+use std::{sync::Arc, sync::Mutex, thread, time::SystemTime};
 use workflow_core::abortable::Abortable;
-mod config;
 mod cache;
-use config::*;
+mod config;
 use cache::*;
+use config::*;
 
 struct PubkeyManager {
     public_key: PublicKey2,
@@ -78,6 +78,7 @@ impl PubkeyManager {
 // }
 
 fn check_wallet(mnemonic: &Mnemonic, target_address: &Address) -> Result<bool, Error> {
+    //return Ok(false);
     let seed = mnemonic.create_seed(None);
     let seed_bytes =
         Vec::<u8>::from_hex(seed.as_str()).map_err(|_| Error::Custom("Invalid seed".into()))?;
@@ -145,16 +146,13 @@ fn main() -> Result<(), Error> {
 
     let now = SystemTime::now();
     println!("Attempt to fix 1 word in the mnemonic.");
-    if one_word(MNEMONIC, &target_address)?{
+    if one_word(MNEMONIC, &target_address)? {
         //
     } else if FIX_2_WORDS {
         println!("Now attempt to fix up to 2 words in the mnemonic.");
         two_words(MNEMONIC, &target_address)?;
     }
-    println!(
-        "Finished in {:?}",
-        now.elapsed().unwrap()
-    );
+    println!("Finished in {:?}", now.elapsed().unwrap());
 
     Ok(())
 }
@@ -164,7 +162,7 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
     let word_list = Arc::new(word_list);
     let all_words = word_list.clone();
     let word_list_chuncks = word_list
-        .chunks(700)
+        .chunks(64)
         .map(|a| Arc::new(a.iter().map(|s| String::from(*s)).collect::<Vec<String>>()))
         .collect::<Vec<_>>();
 
@@ -175,9 +173,12 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
     let length = wallet_mnemonic.len();
 
     let cache = Cache::load()?;
-    let mut handles = vec![];
+
+    let found_mnemonic = Arc::new(Mutex::new(None));
     for index1 in 0..(length - 1) {
+        let mut handles = vec![];
         //println!("index1: {index1} ================================= ");
+        let now = SystemTime::now();
         for (thread_index, word_list) in word_list_chuncks.clone().into_iter().enumerate() {
             println!(
                 "Starting Index-1: {thread_index:>2} {index1}",
@@ -188,12 +189,19 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
             let abortable = abortable.clone();
             let all_words = all_words.clone();
             let cache = cache.clone();
-
-            let handle = thread::spawn(move || -> bool{
+            let found_mnemonic = found_mnemonic.clone();
+            let handle = thread::spawn(move || -> bool {
+                if abortable.is_aborted() {
+                    return false;
+                }
                 let now = SystemTime::now();
+                let mut wallet_mnemonic_clone = wallet_mnemonic.clone();
                 for (i, word1) in word_list.as_ref().iter().enumerate() {
+                    if abortable.is_aborted() {
+                        return false;
+                    }
                     let now = SystemTime::now();
-                    if cache.is_checked(index1, word1){
+                    if cache.is_checked(index1, word1) {
                         println!(
                             "INDEX: {thread_index:>2} {:>2} | TIME: {:>8.6}s | WORD: {:>4} {:<15} | SKIPPED",
                             index1,
@@ -203,33 +211,40 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
                         );
                         continue;
                     }
-                    let mut wallet_mnemonic_clone = wallet_mnemonic.clone();
+
                     wallet_mnemonic_clone[index1] = word1;
 
                     for index2 in (index1 + 1)..length {
                         // if abortable.is_aborted(){
-                        //     return Ok(false);
+                        //     return false;
                         // }
                         //println!("index1: {index1}, index2: {index2}");
+                        let old_word = wallet_mnemonic_clone[index2];
                         for word2 in all_words.as_ref() {
                             wallet_mnemonic_clone[index2] = *word2;
 
-                            let mnemonic =
-                                match Mnemonic::new(wallet_mnemonic_clone.join(" "), Language::English)
-                                {
-                                    Ok(mnemonic) => mnemonic,
-                                    Err(_err) => {
-                                        //println!("mnemonic error: {:?}, {}", _err, mnemonic_phrase);
-                                        continue;
-                                    }
-                                };
+                            let mnemonic = match Mnemonic::new(
+                                wallet_mnemonic_clone.join(" "),
+                                Language::English,
+                            ) {
+                                Ok(mnemonic) => mnemonic,
+                                Err(_err) => {
+                                    //println!("mnemonic error: {:?}, {}", _err, mnemonic_phrase);
+                                    continue;
+                                }
+                            };
                             // println!("=======================\nCreating wallet with: {word1} {word2}");
                             match check_wallet(&mnemonic, &target_address) {
                                 Ok(found) => {
                                     if found {
-                                        println!("🎉 Match found,  🔑: {}", mnemonic.phrase_string());
+                                        println!(
+                                            "🎉 Match found,  🔑: {}",
+                                            mnemonic.phrase_string()
+                                        );
+                                        *found_mnemonic.lock().unwrap() =
+                                            Some(mnemonic.phrase_string());
                                         abortable.abort();
-                                        return true
+                                        return true;
                                     }
                                 }
                                 Err(err) => {
@@ -237,9 +252,10 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
                                 }
                             }
                         }
+                        wallet_mnemonic_clone[index2] = old_word;
                     }
 
-                    
+                    //if word1=="pumpkin"{
                     println!(
                         "INDEX: {thread_index:>2} {:>2} | TIME: {:>8.6}s | WORD: {:>4} {:<15}",
                         index1,
@@ -247,11 +263,11 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
                         i,
                         word1
                     );
+                    //}
                     cache.mark_checked(index1, word1);
-                    cache.save();
-                    
+                    //cache.save();
                 }
-                cache.mark_all(index1, &all_words);
+
                 //cache.save();
                 println!(
                     "INDEX: {:>2} {:>2} | FINISHED IN TIME: {:>8.6}s",
@@ -263,15 +279,24 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
             });
             handles.push(handle);
         }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        cache.mark_all(index1, &all_words);
+        cache.save();
+        println!(
+            "INDEX {:>2} FINISHED IN {:>8.6}s",
+            index1,
+            now.elapsed().unwrap().as_secs_f64()
+        );
+        if let Some(s) = found_mnemonic.lock().unwrap().as_ref() {
+            println!("🎉 Match found,  🔑: {s}");
+            return Ok(true);
+        }
     }
 
     //println!("handles: {}", handles.len());
-
-    for handle in handles {
-        if handle.join().unwrap(){
-            return Ok(true)
-        }
-    }
 
     Ok(false)
 }
@@ -297,11 +322,7 @@ fn one_word(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Res
                 if abortable.is_aborted() {
                     return false;
                 }
-                println!(
-                    "INDEX: {:>2} | WORD: {:<15}",
-                    index1,
-                    word1
-                );
+                println!("INDEX: {:>2} | WORD: {:<15}", index1, word1);
 
                 let mnemonic_phrase = wallet_mnemonic_clone.join(" ");
                 // if word1 == "bitter" && word2 == "doll"{
