@@ -1,6 +1,7 @@
 name: Release for macOS
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*' # Triggers workflow for tags like "v1.0.0"
@@ -41,4 +42,4 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         tag: ${{ github.ref_name }}
         name: Release ${{ github.ref_name }}
-        files: release.tar.gz
+        artifacts: release.tar.gz
