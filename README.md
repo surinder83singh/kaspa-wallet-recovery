@@ -1,3 +1,4 @@
+[![Release for macOS](https://github.com/surinder83singh/kaspa-wallet-recovery/actions/workflows/release.yml/badge.svg)](https://github.com/surinder83singh/kaspa-wallet-recovery/actions/workflows/release.yml)
 # Wallet Recovery Tool
 
 This Rust-based tool derives addresses from your wallet's mnemonic and matches them against a given target address. It can also fix up to **two incorrect words** in the mnemonic, enabling recovery even with minor errors.
