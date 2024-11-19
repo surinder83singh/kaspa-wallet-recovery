@@ -1,0 +1,42 @@
+name: Release for macOS
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers workflow for tags like "v1.0.0"
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+
+    - name: Build for macOS (x86_64)
+      run: cargo build --release --target x86_64-apple-darwin
+
+    - name: Build for macOS (ARM64)
+      run: cargo build --release --target aarch64-apple-darwin
+
+    - name: Package Binaries
+      run: |
+        mkdir release
+        cp target/x86_64-apple-darwin/release/kaspa-wallet-recovery release/kaspa-wallet-recovery-x86_64
+        cp target/aarch64-apple-darwin/release/kaspa-wallet-recovery release/kaspa-wallet-recovery-arm64
+        tar -czvf release.tar.gz release
+
+    - name: Create GitHub Release
+      uses: ncipollo/release-action@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        files: release.tar.gz
