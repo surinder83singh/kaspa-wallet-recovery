@@ -144,7 +144,7 @@ fn main() -> Result<(), Error> {
     let target_address = Arc::new(Address::try_from(TARGET_ADDRESS).unwrap());
 
     let now = SystemTime::now();
-    println!("The application attempt to fix 1 word in the mnemonic.");
+    println!("Attempt to fix 1 word in the mnemonic.");
     if one_word(MNEMONIC, &target_address)?{
         //
     } else if FIX_2_WORDS {
@@ -195,7 +195,7 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
                     let now = SystemTime::now();
                     if cache.is_checked(index1, word1){
                         println!(
-                            "INDEX: {:>2} | TIME: {:>8.6}s | WORD: {:>4} {:<15} | SKIPPED",
+                            "INDEX: {thread_index:>2} {:>2} | TIME: {:>8.6}s | WORD: {:>4} {:<15} | SKIPPED",
                             index1,
                             now.elapsed().unwrap().as_secs_f64(),
                             i,
@@ -241,7 +241,7 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
 
                     
                     println!(
-                        "INDEX: {:>2} | TIME: {:>8.6}s | WORD: {:>4} {:<15}",
+                        "INDEX: {thread_index:>2} {:>2} | TIME: {:>8.6}s | WORD: {:>4} {:<15}",
                         index1,
                         now.elapsed().unwrap().as_secs_f64(),
                         i,
