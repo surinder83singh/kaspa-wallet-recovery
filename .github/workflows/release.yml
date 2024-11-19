@@ -33,10 +33,13 @@ jobs:
 
     - name: Package Binaries
       run: |
-        mkdir release
-        cp target/x86_64-apple-darwin/release/kaspa-wallet-recovery release/kaspa-wallet-recovery-x86_64
-        cp target/aarch64-apple-darwin/release/kaspa-wallet-recovery release/kaspa-wallet-recovery-arm64
-        tar -czvf release.tar.gz release
+        mkdir release-darwin-x86_64
+        cp target/x86_64-apple-darwin/release/kaspa-wallet-recovery release-darwin-x86_64/kaspa-wallet-recovery-x86_64
+        tar -czvf kaspa-wallet-recovery-darwin-x86_64.tar.gz release-darwin-x86_64
+        mkdir release-darwin-arm64
+        cp target/aarch64-apple-darwin/release/kaspa-wallet-recovery release-darwin-arm64/kaspa-wallet-recovery-arm64
+        tar -czvf kaspa-wallet-recovery-darwin-arm64.tar.gz release-darwin-arm64
+        
 
     - name: Create GitHub Release
       uses: ncipollo/release-action@v1
@@ -44,4 +47,4 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         tag: ${{ github.ref_name }}
         name: Release ${{ github.ref_name }}
-        artifacts: release.tar.gz
+        artifacts: kaspa-wallet-recovery-darwin-x86_64.tar.gz,kaspa-wallet-recovery-darwin-arm64.tar.gz 
