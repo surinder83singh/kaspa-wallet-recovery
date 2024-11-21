@@ -1,5 +1,5 @@
 use hmac::Mac;
-use kaspa_addresses::{Address, PayloadVec}; //, Prefix as AddressPrefix, Version as AddressVersion};
+use kaspa_addresses::Address;//, PayloadVec}; //, Prefix as AddressPrefix, Version as AddressVersion};
 use kaspa_bip32::{
     secp256k1, secp256k1::PublicKey as PublicKey2, AddressType, ChildNumber, ExtendedKeyAttrs,
     ExtendedPrivateKey, HmacSha512, Language, Mnemonic, PublicKey, SecretKey, SecretKeyExt,
@@ -29,16 +29,21 @@ impl PubkeyManager {
         //     payload: PayloadVec::from_slice(&[]),
         //     version: AddressVersion::PubKey,
         // };
+        let payload = target_address.payload.as_slice();
         for index in indexes {
             let key = Self::derive_public_key_child(
                 &self.public_key,
                 ChildNumber::new(index, true)?,
                 self.hmac.clone(),
             )?;
-            let payload = PayloadVec::from_slice(&key.to_bytes()[1..]);
-            if target_address.payload == payload {
+
+            if &key.to_bytes()[1..] == payload{
                 return Ok(true);
             }
+            // let payload = PayloadVec::from_slice(&);
+            // if target_address.payload == payload {
+            //     return Ok(true);
+            // }
         }
 
         Ok(false)

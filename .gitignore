@@ -22,3 +22,5 @@ analyzer-target/
 #.idea/
 .DS_Store
 cache/
+c/test_openssl.c
+test_openssl
