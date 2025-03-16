@@ -23,6 +23,7 @@ impl PubkeyManager {
         &self,
         indexes: std::ops::Range<u32>,
         target_address: &Address,
+        child_numbers: Arc<Vec<[u8; 4]>>
     ) -> Result<bool, Error> {
         // let mut address = Address {
         //     prefix: AddressPrefix::Mainnet,
@@ -30,20 +31,20 @@ impl PubkeyManager {
         //     version: AddressVersion::PubKey,
         // };
         let payload = target_address.payload.as_slice();
-        for index in indexes {
-            let key = Self::derive_public_key_child(
-                &self.public_key,
-                ChildNumber::new(index, true)?,
-                self.hmac.clone(),
-            )?;
 
-            if &key.to_bytes()[1..] == payload{
+        for index in indexes {
+            // let key = Self::derive_public_key_child(
+            //     &self.public_key,
+            //     ChildNumber::new(index, true)?,
+            //     self.hmac.clone()
+            // )?;
+            let mut hmac = self.hmac.clone();
+            hmac.update(&child_numbers[index as usize]);
+            let result = hmac.finalize().into_bytes();
+            let (child_key, _chain_code) = result.split_at(KEY_SIZE);
+            if &self.public_key.derive_child(child_key.try_into()?)?.to_bytes()[1..] == payload {
                 return Ok(true);
             }
-            // let payload = PayloadVec::from_slice(&);
-            // if target_address.payload == payload {
-            //     return Ok(true);
-            // }
         }
 
         Ok(false)
@@ -82,7 +83,7 @@ impl PubkeyManager {
 //     Ok(false)
 // }
 
-fn check_wallet(mnemonic: &Mnemonic, target_address: &Address) -> Result<bool, Error> {
+fn check_wallet(mnemonic: &Mnemonic, target_address: &Address, child_numbers: Arc<Vec<[u8; 4]>>   ) -> Result<bool, Error> {
     //return Ok(false);
     let seed = mnemonic.create_seed(None);
     let seed_bytes =
@@ -113,12 +114,12 @@ fn check_wallet(mnemonic: &Mnemonic, target_address: &Address) -> Result<bool, E
 
     //let receive_wallet = WalletDerivationManagerV0::create_pubkey_manager(&private_key, AddressType::Receive, &attrs)?;
     let receive_wallet = create_pubkey_manager(&private_key, AddressType::Receive, &attrs);
-    if receive_wallet.check_addresses(0..100, target_address)? {
+    if receive_wallet.check_addresses(0..100, target_address, child_numbers.clone())? {
         return Ok(true);
     }
     //let change_wallet = WalletDerivationManagerV0::create_pubkey_manager(&private_key, AddressType::Change, &attrs)?;
     let change_wallet = create_pubkey_manager(&private_key, AddressType::Change, &attrs);
-    if change_wallet.check_addresses(0..100, target_address)? {
+    if change_wallet.check_addresses(0..100, target_address, child_numbers)? {
         return Ok(true);
     }
     Ok(false)
@@ -149,20 +150,25 @@ fn create_pubkey_manager(
 fn main() -> Result<(), Error> {
     let target_address = Arc::new(Address::try_from(TARGET_ADDRESS).unwrap());
 
+    let mut child_numbers = vec![];
+    for index in 0..100{
+        child_numbers.push(ChildNumber::new(index, true)?.to_bytes());
+    }
+    let child_numbers = Arc::new(child_numbers);
     let now = SystemTime::now();
     println!("Attempt to fix 1 word in the mnemonic.");
-    if one_word(MNEMONIC, &target_address)? {
+    if one_word(MNEMONIC, &target_address,  child_numbers.clone())? {
         //
     } else if FIX_2_WORDS {
         println!("Now attempt to fix up to 2 words in the mnemonic.");
-        two_words(MNEMONIC, &target_address)?;
+        two_words(MNEMONIC, &target_address,  child_numbers)?;
     }
     println!("Finished in {:?}", now.elapsed().unwrap());
 
     Ok(())
 }
 
-fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Result<bool, Error> {
+fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>, child_numbers: Arc<Vec<[u8; 4]>> ) -> Result<bool, Error> {
     let word_list = Language::English.wordlist().iter().collect::<Vec<_>>(); //[0..].to_vec();
     let word_list = Arc::new(word_list);
     let all_words = word_list.clone();
@@ -195,6 +201,7 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
             let all_words = all_words.clone();
             let cache = cache.clone();
             let found_mnemonic = found_mnemonic.clone();
+            let child_numbers = child_numbers.clone();
             let handle = thread::spawn(move || -> bool {
                 if abortable.is_aborted() {
                     return false;
@@ -239,7 +246,7 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
                                 }
                             };
                             // println!("=======================\nCreating wallet with: {word1} {word2}");
-                            match check_wallet(&mnemonic, &target_address) {
+                            match check_wallet(&mnemonic, &target_address, child_numbers.clone()) {
                                 Ok(found) => {
                                     if found {
                                         println!(
@@ -306,7 +313,7 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Re
     Ok(false)
 }
 
-fn one_word(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Result<bool, Error> {
+fn one_word(wallet_mnemonic: &'static str, target_address: &Arc<Address>, child_numbers: Arc<Vec<[u8; 4]>>  ) -> Result<bool, Error> {
     let word_list = Language::English.wordlist().iter().collect::<Vec<_>>();
     let word_list = Arc::new(word_list);
     let abortable = Abortable::new();
@@ -320,6 +327,7 @@ fn one_word(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Res
         let word_list = word_list.clone();
         let target_address = target_address.clone();
         let abortable = abortable.clone();
+        let child_numbers = child_numbers.clone();
         let handle = thread::spawn(move || -> bool {
             //println!("index1: {index1}");
             for word1 in word_list.as_ref() {
@@ -342,7 +350,7 @@ fn one_word(wallet_mnemonic: &'static str, target_address: &Arc<Address>) -> Res
                     }
                 };
                 // println!("=======================\nCreating wallet with: {word1} {word2}");
-                match check_wallet(&mnemonic, &target_address) {
+                match check_wallet(&mnemonic, &target_address, child_numbers.clone()) {
                     Ok(found) => {
                         if found {
                             println!("🎉 Match found 🔑 :  {mnemonic_phrase}");
