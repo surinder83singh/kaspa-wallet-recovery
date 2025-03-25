@@ -1,5 +1,5 @@
 use hmac::Mac;
-use kaspa_addresses::Address;//, PayloadVec}; //, Prefix as AddressPrefix, Version as AddressVersion};
+use kaspa_addresses::Address; //, PayloadVec}; //, Prefix as AddressPrefix, Version as AddressVersion};
 use kaspa_bip32::{
     secp256k1, secp256k1::PublicKey as PublicKey2, AddressType, ChildNumber, ExtendedKeyAttrs,
     ExtendedPrivateKey, HmacSha512, Language, Mnemonic, PublicKey, SecretKey, SecretKeyExt,
@@ -23,7 +23,7 @@ impl PubkeyManager {
         &self,
         indexes: std::ops::Range<u32>,
         target_address: &Address,
-        child_numbers: Arc<Vec<[u8; 4]>>
+        child_numbers: Arc<Vec<[u8; 4]>>,
     ) -> Result<bool, Error> {
         // let mut address = Address {
         //     prefix: AddressPrefix::Mainnet,
@@ -42,37 +42,64 @@ impl PubkeyManager {
             hmac.update(&child_numbers[index as usize]);
             let result = hmac.finalize().into_bytes();
             let (child_key, _chain_code) = result.split_at(KEY_SIZE);
-            if &self.public_key.derive_child(child_key.try_into()?)?.to_bytes()[1..] == payload {
+            if &self
+                .public_key
+                .derive_child(child_key.try_into()?)?
+                .to_bytes()[1..]
+                == payload
+            {
                 return Ok(true);
             }
         }
 
+        // Process in parallel batches for better CPU utilization
+        // let batch_size = 10;
+        // let batches: Vec<_> = indexes.collect::<Vec<_>>().chunks(batch_size).map(|c| c.to_vec()).collect();
+
+        // for batch in batches {
+        //     let found = batch.par_iter().any(|&index| {
+        //         let mut hmac = self.hmac.clone();
+        //         hmac.update(&child_numbers[index as usize]);
+        //         let result = hmac.finalize().into_bytes();
+        //         let (child_key, _chain_code) = result.split_at(KEY_SIZE);
+
+        //         match self.public_key.derive_child(child_key.try_into().unwrap()) {
+        //             Ok(key) => &key.to_bytes()[1..] == payload,
+        //             Err(_) => false
+        //         }
+        //     });
+
+        //     if found {
+        //         return Ok(true);
+        //     }
+        // }
+
         Ok(false)
     }
 
-    fn derive_public_key_child(
-        key: &secp256k1::PublicKey,
-        child_number: ChildNumber,
-        mut hmac: HmacSha512,
-    ) -> Result<secp256k1::PublicKey, Error> {
-        hmac.update(&child_number.to_bytes());
+    // fn derive_public_key_child(
+    //     key: &secp256k1::PublicKey,
+    //     child_number: ChildNumber,
+    //     mut hmac: HmacSha512,
+    // ) -> Result<secp256k1::PublicKey, Error> {
+    //     hmac.update(&child_number.to_bytes());
 
-        let result = hmac.finalize().into_bytes();
-        let (child_key, _chain_code) = result.split_at(KEY_SIZE);
+    //     let result = hmac.finalize().into_bytes();
+    //     let (child_key, _chain_code) = result.split_at(KEY_SIZE);
 
-        // We should technically loop here if a `secret_key` is zero or overflows
-        // the order of the underlying elliptic curve group, incrementing the
-        // index, however per "Child key derivation (CKD) functions":
-        // https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#child-key-derivation-ckd-functions
-        //
-        // > "Note: this has probability lower than 1 in 2^127."
-        //
-        // ...so instead, we simply return an error if this were ever to happen,
-        // as the chances of it happening are vanishingly small.
-        //let key = key.derive_child(child_key.try_into()?)?;
+    //     // We should technically loop here if a `secret_key` is zero or overflows
+    //     // the order of the underlying elliptic curve group, incrementing the
+    //     // index, however per "Child key derivation (CKD) functions":
+    //     // https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#child-key-derivation-ckd-functions
+    //     //
+    //     // > "Note: this has probability lower than 1 in 2^127."
+    //     //
+    //     // ...so instead, we simply return an error if this were ever to happen,
+    //     // as the chances of it happening are vanishingly small.
+    //     //let key = key.derive_child(child_key.try_into()?)?;
 
-        Ok(key.derive_child(child_key.try_into()?)?)
-    }
+    //     Ok(key.derive_child(child_key.try_into()?)?)
+    // }
 }
 
 // fn check_addresses(manger: &PubkeyManager, target_address: &Address)-> Result<bool, Error>{
@@ -83,7 +110,11 @@ impl PubkeyManager {
 //     Ok(false)
 // }
 
-fn check_wallet(mnemonic: &Mnemonic, target_address: &Address, child_numbers: Arc<Vec<[u8; 4]>>   ) -> Result<bool, Error> {
+fn check_wallet(
+    mnemonic: &Mnemonic,
+    target_address: &Address,
+    child_numbers: Arc<Vec<[u8; 4]>>,
+) -> Result<bool, Error> {
     //return Ok(false);
     let seed = mnemonic.create_seed(None);
     let seed_bytes =
@@ -151,24 +182,28 @@ fn main() -> Result<(), Error> {
     let target_address = Arc::new(Address::try_from(TARGET_ADDRESS).unwrap());
 
     let mut child_numbers = vec![];
-    for index in 0..100{
+    for index in 0..100 {
         child_numbers.push(ChildNumber::new(index, true)?.to_bytes());
     }
     let child_numbers = Arc::new(child_numbers);
     let now = SystemTime::now();
     println!("Attempt to fix 1 word in the mnemonic.");
-    if one_word(MNEMONIC, &target_address,  child_numbers.clone())? {
+    if one_word(MNEMONIC, &target_address, child_numbers.clone())? {
         //
     } else if FIX_2_WORDS {
         println!("Now attempt to fix up to 2 words in the mnemonic.");
-        two_words(MNEMONIC, &target_address,  child_numbers)?;
+        two_words(MNEMONIC, &target_address, child_numbers)?;
     }
     println!("Finished in {:?}", now.elapsed().unwrap());
 
     Ok(())
 }
 
-fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>, child_numbers: Arc<Vec<[u8; 4]>> ) -> Result<bool, Error> {
+fn two_words(
+    wallet_mnemonic: &'static str,
+    target_address: &Arc<Address>,
+    child_numbers: Arc<Vec<[u8; 4]>>,
+) -> Result<bool, Error> {
     let word_list = Language::English.wordlist().iter().collect::<Vec<_>>(); //[0..].to_vec();
     let word_list = Arc::new(word_list);
     let all_words = word_list.clone();
@@ -225,7 +260,6 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>, child
                     }
 
                     wallet_mnemonic_clone[index1] = word1;
-
                     for index2 in (index1 + 1)..length {
                         // if abortable.is_aborted(){
                         //     return false;
@@ -277,10 +311,8 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>, child
                     );
                     //}
                     cache.mark_checked(index1, word1);
-                    //cache.save();
                 }
 
-                //cache.save();
                 println!(
                     "INDEX: {:>2} {:>2} | FINISHED IN TIME: {:>8.6}s",
                     thread_index,
@@ -296,7 +328,7 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>, child
             handle.join().unwrap();
         }
         cache.mark_all(index1, &all_words);
-        cache.save();
+        //cache.save();
         println!(
             "INDEX {:>2} FINISHED IN {:>8.6}s",
             index1,
@@ -313,7 +345,11 @@ fn two_words(wallet_mnemonic: &'static str, target_address: &Arc<Address>, child
     Ok(false)
 }
 
-fn one_word(wallet_mnemonic: &'static str, target_address: &Arc<Address>, child_numbers: Arc<Vec<[u8; 4]>>  ) -> Result<bool, Error> {
+fn one_word(
+    wallet_mnemonic: &'static str,
+    target_address: &Arc<Address>,
+    child_numbers: Arc<Vec<[u8; 4]>>,
+) -> Result<bool, Error> {
     let word_list = Language::English.wordlist().iter().collect::<Vec<_>>();
     let word_list = Arc::new(word_list);
     let abortable = Abortable::new();
